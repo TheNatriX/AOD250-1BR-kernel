@@ -1,0 +1,33 @@
+sa-i scot devtmpfs
+coretemp
+si sa scot cpu scheduling sa vedem cum merge.
+DAR TRE SA FAC BENCHMARK-UL MAI BINE
+
+
+
+crapaul din modprobe dmesg:
+
+I finally tracked this down to
+kernel/module.c, line 2607 (linux-3.2.25)
+ptr = module_alloc_update_bounds(mod->init_size);
+mod->init_size is zero for some modules when KALLSYMS is disabled.
+Somewhere down in module_alloc_update_bounds or its children
+a dump is called when 0 size is passed in. I added a test around
+the relevant code and all is well now (
+if (mod->init_size) {
+                ptr = module_alloc_update_bounds(mod->init_size);
+                /*
+                * The pointer to this block is stored in the module structure
+                * which is inside the block. This block doesn't need to be
+                * scanned as it contains data and code that will be freed
+                * after the module is initialized.
+                */
+                kmemleak_ignore(ptr);
+                if (!ptr) {
+                        module_free(mod, mod->module_core);
+                        return -ENOMEM;
+                }
+                memset(ptr, 0, mod->init_size);
+                mod->module_init = ptr;
+}
+else mod->module_init = NULL;
